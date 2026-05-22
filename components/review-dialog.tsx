@@ -83,18 +83,6 @@ export function ReviewDialog({
             </div>
           : response?.success && response?.data ?
             <>
-              {/* Main Review Text */}
-              <div className="bg-black/5 dark:bg-white/5 p-4 rounded-lg border border-black/10 dark:border-white/10">
-                <p className="text-base leading-relaxed text-black dark:text-white whitespace-pre-wrap">
-                  {response.data.review_text}
-                </p>
-              </div>
-
-              {/* Rating */}
-              <div className="flex items-center justify-between">
-                <StarRating rating={response.data.rating} />
-              </div>
-
               {/* Audio Player - only if audio_base64 is not empty */}
               {response.data.audio_base64 &&
                 response.data.audio_base64.trim() !== "" && (
@@ -111,6 +99,17 @@ export function ReviewDialog({
                     </audio>
                   </div>
                 )}
+              {/* Main Review Text */}
+              <div className="bg-black/5 dark:bg-white/5 p-4 rounded-lg border border-black/10 dark:border-white/10">
+                <p className="text-base leading-relaxed text-black dark:text-white whitespace-pre-wrap">
+                  {response.data.review_text}
+                </p>
+              </div>
+
+              {/* Rating */}
+              <div className="flex items-center justify-between">
+                <StarRating rating={response.data.rating} />
+              </div>
 
               {/* Metadata: Confidence & Persona Match */}
               <div className="grid grid-cols-2 gap-3 p-3 bg-black/5 dark:bg-white/5 rounded-lg border border-black/10 dark:border-white/10">
