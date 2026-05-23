@@ -22,8 +22,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSimulateReview } from "@/hooks/use-simulate-review";
+import { useRecommend } from "@/hooks/use-recommend";
 import { ReviewDialog } from "@/components/review-dialog";
 import type { SimulateReviewResponse } from "@/lib/types/review";
+import type { RecommendationResponse } from "@/lib/types/recommendation";
 
 interface UseAutoResizeTextareaProps {
   minHeight: number;
@@ -137,13 +139,20 @@ export function AI_Prompt() {
     "persona",
   );
   const [charCount, setCharCount] = useState(0);
-  const [contentHeight, setContentHeight] = useState("auto");
+  const [language, setLanguage] = useState<
+    "english" | "pidgin" | "yoruba" | "igbo" | "hausa" | null
+  >(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [dialogResponse, setDialogResponse] =
-    useState<SimulateReviewResponse | null>(null);
+  const [dialogResponse, setDialogResponse] = useState<{
+    review: SimulateReviewResponse | null;
+    recommendation: RecommendationResponse | null;
+  }>({ review: null, recommendation: null });
 
   const contentRef = useRef<HTMLDivElement>(null);
-  const { mutate, isPending } = useSimulateReview();
+  const { mutate: submitReview, isPending: isReviewPending } =
+    useSimulateReview();
+  const { mutate: submitRecommend, isPending: isRecommendPending } =
+    useRecommend();
 
   const { textareaRef, adjustHeight } = useAutoResizeTextarea({
     minHeight: 100,
@@ -161,17 +170,21 @@ export function AI_Prompt() {
     "GPT-4-1",
   ];
 
-  // Check if required fields are filled
+  // Check if required fields are filled based on mode
   const requiredFieldsFilled =
     formState.product_name.trim() &&
     formState.product_category &&
-    formState.product_description.trim();
+    formState.product_description.trim() &&
+    (formState.user_id.trim() || formState.user_persona.trim());
+
+  // Both requests are pending
+  const isPending = isReviewPending || isRecommendPending;
 
   // Update content height on state changes
   useEffect(() => {
     if (contentRef.current) {
       const newHeight = contentRef.current.scrollHeight;
-      setContentHeight(`${newHeight}px`);
+      // This effect just ensures the dialog stays sized properly
     }
   }, [formState, showAdvanced, userInputMode, errors]);
 
@@ -179,6 +192,12 @@ export function AI_Prompt() {
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
 
+    // Validation: At least one of user_id or user_persona must be provided
+    if (!formState.user_id.trim() && !formState.user_persona.trim()) {
+      newErrors.user_context = "Either user ID or persona must be provided";
+    }
+
+    // Review validations (always applies)
     if (!formState.product_name.trim()) {
       newErrors.product_name = "Product name is required";
     }
@@ -187,11 +206,6 @@ export function AI_Prompt() {
     }
     if (!formState.product_description.trim()) {
       newErrors.product_description = "Description is required";
-    }
-
-    // Validation: At least one of user_id or user_persona must be provided
-    if (!formState.user_id.trim() && !formState.user_persona.trim()) {
-      newErrors.user_context = "Either user ID or persona must be provided";
     }
 
     // Validation: business_name is required for food/business categories
@@ -210,7 +224,7 @@ export function AI_Prompt() {
   const handleSubmit = () => {
     if (!validateForm()) return;
 
-    const payload = {
+    const reviewPayload = {
       product_name: formState.product_name.trim(),
       product_category: formState.product_category,
       product_description: formState.product_description.trim(),
@@ -221,17 +235,41 @@ export function AI_Prompt() {
       ...(formState.business_name.trim() && {
         business_name: formState.business_name.trim(),
       }),
+      language,
     };
 
-    mutate(payload, {
-      onSuccess: (response) => {
-        setDialogResponse(response);
-        setIsDialogOpen(true);
-        if (response.success) {
-          resetForm();
-        }
+    const recommendationPayload = {
+      ...(formState.user_id.trim() && { user_id: formState.user_id.trim() }),
+      ...(formState.user_persona.trim() && {
+        user_persona: formState.user_persona.trim(),
+      }),
+      category: formState.product_category,
+      language,
+    };
+
+    // Make both API calls simultaneously
+    submitReview(reviewPayload, {
+      onSuccess: (reviewResponse) => {
+        setDialogResponse((prev) => ({
+          ...prev,
+          review: reviewResponse,
+        }));
       },
     });
+
+    submitRecommend(recommendationPayload, {
+      onSuccess: (recommendResponse) => {
+        setDialogResponse((prev) => ({
+          ...prev,
+          recommendation: recommendResponse,
+        }));
+      },
+    });
+
+    // Open dialog after a short delay to allow both requests to start
+    setTimeout(() => {
+      setIsDialogOpen(true);
+    }, 100);
   };
 
   const resetForm = () => {
@@ -350,6 +388,7 @@ export function AI_Prompt() {
             ref={contentRef}
             className="flex-1 flex flex-col space-y-3 p-4 pb-0"
           >
+            {/* Mode Toggle */}
             {/* Progress Indicator */}
             <motion.div
               initial={{ opacity: 0 }}
@@ -403,72 +442,106 @@ export function AI_Prompt() {
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3 }}
-              className="grid grid-cols-3 gap-3"
+              className="space-y-3"
             >
-              <div className="col-span-2">
-                <label className="text-xs font-medium text-black/60 dark:text-white/60 mb-1.5 block">
-                  Product Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formState.product_name}
-                  onChange={(e) =>
-                    setFormState((prev) => ({
-                      ...prev,
-                      product_name: e.target.value,
-                    }))
-                  }
-                  placeholder="e.g., Jollof Rice, The Midnight Library..."
-                  className={cn(
-                    "w-full px-3 py-2 bg-black/5 dark:bg-white/5 border rounded-lg outline-none transition-all text-sm dark:text-white",
-                    "focus:ring-1 focus:ring-blue-500 focus:border-transparent",
-                    errors.product_name ? "border-red-500" : (
-                      "border-transparent"
-                    ),
-                  )}
-                />
-                {errors.product_name && (
-                  <motion.p
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    className="text-xs text-red-500 mt-1"
-                  >
-                    {errors.product_name}
-                  </motion.p>
-                )}
-              </div>
-
+              {/* Language Selector */}
               <div>
                 <label className="text-xs font-medium text-black/60 dark:text-white/60 mb-1.5 block">
-                  Category <span className="text-red-500">*</span>
+                  Language
                 </label>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      className="w-full h-9 px-3 bg-black/5 dark:bg-white/5 text-black dark:text-white border border-transparent hover:border-black/10 dark:hover:border-white/10 rounded-lg justify-between"
+                <select
+                  value={language ?? ""}
+                  onChange={(e) =>
+                    setLanguage(
+                      e.target.value === "" ? null : (e.target.value as any),
+                    )
+                  }
+                  className="w-full px-3 py-2 bg-black/5 dark:bg-white/5 border border-transparent rounded-lg outline-none transition-all text-sm dark:text-white focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="">Auto Detect</option>
+                  <option value="pidgin">Pidgin English</option>
+                  <option value="english">English</option>
+                  <option value="yoruba">Yoruba</option>
+                  <option value="igbo">Igbo</option>
+                  <option value="hausa">Hausa</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label className="text-xs font-medium text-black/60 dark:text-white/60 mb-1.5 block">
+                    Product Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formState.product_name}
+                    onChange={(e) =>
+                      setFormState((prev) => ({
+                        ...prev,
+                        product_name: e.target.value,
+                      }))
+                    }
+                    placeholder="e.g., Jollof Rice, The Midnight Library..."
+                    className={cn(
+                      "w-full px-3 py-2 bg-black/5 dark:bg-white/5 border rounded-lg outline-none transition-all text-sm dark:text-white",
+                      "focus:ring-1 focus:ring-blue-500 focus:border-transparent",
+                      errors.product_name ? "border-red-500" : (
+                        "border-transparent"
+                      ),
+                    )}
+                  />
+                  {errors.product_name && (
+                    <motion.p
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      className="text-xs text-red-500 mt-1"
                     >
-                      <span className="text-sm capitalize">
-                        {formState.product_category}
-                      </span>
-                      <ChevronDown className="w-4 h-4 opacity-50" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="bg-white dark:bg-neutral-900 border-black/10 dark:border-white/10">
-                    {PRODUCT_CATEGORIES.map((cat) => (
-                      <DropdownMenuItem
-                        key={cat}
-                        onSelect={() => handleCategoryChange(cat)}
-                        className="flex items-center justify-between gap-2 capitalize"
+                      {errors.product_name}
+                    </motion.p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-black/60 dark:text-white/60 mb-1.5 block">
+                    Category <span className="text-red-500">*</span>
+                  </label>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="w-full h-9 px-3 bg-black/5 dark:bg-white/5 text-black dark:text-white border border-transparent hover:border-black/10 dark:hover:border-white/10 rounded-lg justify-between"
                       >
-                        <span>{cat}</span>
-                        {formState.product_category === cat && (
-                          <Check className="w-4 h-4 text-blue-500" />
-                        )}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                        <span className="text-sm capitalize">
+                          {formState.product_category}
+                        </span>
+                        <ChevronDown className="w-4 h-4 opacity-50" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="bg-white dark:bg-neutral-900 border-black/10 dark:border-white/10">
+                      {PRODUCT_CATEGORIES.map((cat) => (
+                        <DropdownMenuItem
+                          key={cat}
+                          onSelect={() => handleCategoryChange(cat)}
+                          className="flex items-center justify-between gap-2 capitalize"
+                        >
+                          <span>{cat}</span>
+                          {formState.product_category === cat && (
+                            <Check className="w-4 h-4 text-blue-500" />
+                          )}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  {errors.product_category && (
+                    <motion.p
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      className="text-xs text-red-500 mt-1"
+                    >
+                      {errors.product_category}
+                    </motion.p>
+                  )}
+                </div>
               </div>
             </motion.div>
 
@@ -512,174 +585,178 @@ export function AI_Prompt() {
             </motion.div>
 
             {/* Advanced Section Toggle */}
-            <motion.button
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.3, delay: 0.2 }}
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center gap-2 text-xs font-medium text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white transition-colors py-2 self-start"
-            >
-              {showAdvanced ?
-                <ChevronUp className="w-4 h-4" />
-              : <ChevronDown className="w-4 h-4" />}
-              User Context{" "}
-              <span className="text-black/40 dark:text-white/40">
-                (optional)
-              </span>
-            </motion.button>
+            <>
+              <motion.button
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.3, delay: 0.2 }}
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="flex items-center gap-2 text-xs font-medium text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white transition-colors py-2 self-start"
+              >
+                {showAdvanced ?
+                  <ChevronUp className="w-4 h-4" />
+                : <ChevronDown className="w-4 h-4" />}
+                User Context{" "}
+                <span className="text-black/40 dark:text-white/40">
+                  (optional)
+                </span>
+              </motion.button>
 
-            {/* Advanced Section */}
-            <AnimatePresence>
-              {showAdvanced && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.3 }}
-                  className="space-y-3 border-t border-black/10 dark:border-white/10 pt-3"
-                >
-                  {/* User Input Mode Toggle */}
+              {/* Advanced Section */}
+              <AnimatePresence>
+                {showAdvanced && (
                   <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="flex gap-2 p-2 bg-black/5 dark:bg-white/5 rounded-lg w-fit"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="space-y-3 border-t border-black/10 dark:border-white/10 pt-3"
                   >
-                    <button
-                      onClick={() => setUserInputMode("id")}
-                      className={cn(
-                        "px-3 py-1 text-xs font-medium rounded transition-all",
-                        userInputMode === "id" ?
-                          "bg-blue-500 text-white"
-                        : "text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white",
-                      )}
+                    {/* User Input Mode Toggle */}
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="flex gap-2 p-2 bg-black/5 dark:bg-white/5 rounded-lg w-fit"
                     >
-                      Existing User
-                    </button>
-                    <button
-                      onClick={() => setUserInputMode("persona")}
-                      className={cn(
-                        "px-3 py-1 text-xs font-medium rounded transition-all",
-                        userInputMode === "persona" ?
-                          "bg-blue-500 text-white"
-                        : "text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white",
-                      )}
-                    >
-                      New Persona
-                    </button>
-                  </motion.div>
-
-                  {/* User Context Validation Error */}
-                  {errors.user_context && (
-                    <motion.p
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      className="text-xs text-red-500"
-                    >
-                      {errors.user_context}
-                    </motion.p>
-                  )}
-
-                  {/* User ID Input */}
-                  <AnimatePresence mode="wait">
-                    {userInputMode === "id" && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        <label className="text-xs font-medium text-black/60 dark:text-white/60 mb-1.5 block">
-                          User ID
-                        </label>
-                        <input
-                          type="text"
-                          value={formState.user_id}
-                          onChange={(e) =>
-                            setFormState((prev) => ({
-                              ...prev,
-                              user_id: e.target.value,
-                            }))
-                          }
-                          placeholder="e.g., user_12345"
-                          className="w-full px-3 py-2 bg-black/5 dark:bg-white/5 border border-transparent rounded-lg outline-none transition-all text-sm dark:text-white focus:ring-1 focus:ring-blue-500"
-                        />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {/* User Persona Textarea */}
-                  <AnimatePresence mode="wait">
-                    {userInputMode === "persona" && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        <label className="text-xs font-medium text-black/60 dark:text-white/60 mb-1.5 block">
-                          User Persona
-                        </label>
-                        <Textarea
-                          value={formState.user_persona}
-                          onChange={(e) =>
-                            setFormState((prev) => ({
-                              ...prev,
-                              user_persona: e.target.value,
-                            }))
-                          }
-                          placeholder="e.g., A 28-year-old Yoruba professional in Lagos, loves spicy food, prefers authentic Nigerian cuisine..."
-                          className="w-full px-3 py-2 bg-black/5 dark:bg-white/5 border border-transparent rounded-lg dark:text-white placeholder:text-black/40 dark:placeholder:text-white/40 resize-none focus-visible:ring-1 focus-visible:ring-blue-500 min-h-[80px]"
-                        />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {/* Conditional Business Name Field */}
-                  <AnimatePresence>
-                    {(formState.product_category === "food" ||
-                      formState.product_category === "business") && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        <label className="text-xs font-medium text-black/60 dark:text-white/60 mb-1.5 block">
-                          Business Name
-                        </label>
-                        <input
-                          type="text"
-                          value={formState.business_name}
-                          onChange={(e) =>
-                            setFormState((prev) => ({
-                              ...prev,
-                              business_name: e.target.value,
-                            }))
-                          }
-                          placeholder="e.g., Mama Fola's Kitchen, TechStart Inc..."
-                          className={cn(
-                            "w-full px-3 py-2 bg-black/5 dark:bg-white/5 border rounded-lg outline-none transition-all text-sm dark:text-white focus:ring-1 focus:ring-blue-500",
-                            errors.business_name ? "border-red-500" : (
-                              "border-transparent"
-                            ),
-                          )}
-                        />
-                        {errors.business_name && (
-                          <motion.p
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: "auto" }}
-                            className="text-xs text-red-500 mt-1"
-                          >
-                            {errors.business_name}
-                          </motion.p>
+                      <button
+                        onClick={() => setUserInputMode("id")}
+                        className={cn(
+                          "px-3 py-1 text-xs font-medium rounded transition-all",
+                          userInputMode === "id" ?
+                            "bg-blue-500 text-white"
+                          : "text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white",
                         )}
-                      </motion.div>
+                      >
+                        Existing User
+                      </button>
+                      <button
+                        onClick={() => setUserInputMode("persona")}
+                        className={cn(
+                          "px-3 py-1 text-xs font-medium rounded transition-all",
+                          userInputMode === "persona" ?
+                            "bg-blue-500 text-white"
+                          : "text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white",
+                        )}
+                      >
+                        New Persona
+                      </button>
+                    </motion.div>
+
+                    {/* User Context Validation Error */}
+                    {errors.user_context && (
+                      <motion.p
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        className="text-xs text-red-500"
+                      >
+                        {errors.user_context}
+                      </motion.p>
                     )}
-                  </AnimatePresence>
-                </motion.div>
-              )}
-            </AnimatePresence>
+
+                    {/* User ID Input */}
+                    <AnimatePresence mode="wait">
+                      {userInputMode === "id" && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <label className="text-xs font-medium text-black/60 dark:text-white/60 mb-1.5 block">
+                            User ID
+                          </label>
+                          <input
+                            type="text"
+                            value={formState.user_id}
+                            onChange={(e) =>
+                              setFormState((prev) => ({
+                                ...prev,
+                                user_id: e.target.value,
+                              }))
+                            }
+                            placeholder="e.g., user_12345"
+                            className="w-full px-3 py-2 bg-black/5 dark:bg-white/5 border border-transparent rounded-lg outline-none transition-all text-sm dark:text-white focus:ring-1 focus:ring-blue-500"
+                          />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* User Persona Textarea */}
+                    <AnimatePresence mode="wait">
+                      {userInputMode === "persona" && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <label className="text-xs font-medium text-black/60 dark:text-white/60 mb-1.5 block">
+                            User Persona
+                          </label>
+                          <Textarea
+                            value={formState.user_persona}
+                            onChange={(e) =>
+                              setFormState((prev) => ({
+                                ...prev,
+                                user_persona: e.target.value,
+                              }))
+                            }
+                            placeholder="e.g., A 28-year-old Yoruba professional in Lagos, loves spicy food, prefers authentic Nigerian cuisine..."
+                            className="w-full px-3 py-2 bg-black/5 dark:bg-white/5 border border-transparent rounded-lg dark:text-white placeholder:text-black/40 dark:placeholder:text-white/40 resize-none focus-visible:ring-1 focus-visible:ring-blue-500 min-h-[80px]"
+                          />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* Conditional Business Name Field */}
+                    <AnimatePresence>
+                      {(formState.product_category === "food" ||
+                        formState.product_category === "business") && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <label className="text-xs font-medium text-black/60 dark:text-white/60 mb-1.5 block">
+                            Business Name
+                          </label>
+                          <input
+                            type="text"
+                            value={formState.business_name}
+                            onChange={(e) =>
+                              setFormState((prev) => ({
+                                ...prev,
+                                business_name: e.target.value,
+                              }))
+                            }
+                            placeholder="e.g., Mama Fola's Kitchen, TechStart Inc..."
+                            className={cn(
+                              "w-full px-3 py-2 bg-black/5 dark:bg-white/5 border rounded-lg outline-none transition-all text-sm dark:text-white focus:ring-1 focus:ring-blue-500",
+                              errors.business_name ? "border-red-500" : (
+                                "border-transparent"
+                              ),
+                            )}
+                          />
+                          {errors.business_name && (
+                            <motion.p
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: "auto" }}
+                              className="text-xs text-red-500 mt-1"
+                            >
+                              {errors.business_name}
+                            </motion.p>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </>
+
+            {/* End of form fields */}
           </div>
 
           {/* Bottom Toolbar - Fixed Position */}

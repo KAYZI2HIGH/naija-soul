@@ -1,42 +1,20 @@
 "use server";
 
 import {
-  SimulateReviewRequest,
-  SimulateReviewResponse,
-} from "@/lib/types/review";
+  RecommendationRequest,
+  RecommendationResponse,
+} from "@/lib/types/recommendation";
 
 /**
- * Server action to simulate a product review via the backend API
+ * Server action to get personalized recommendations via the backend API
  * Handles validation, API calls, and error handling
- * @param formData - The form data containing product and user information
- * @returns Promise with success status and response data or error
+ * @param formData - The request data containing user info and optional category filter
+ * @returns Promise with success status and recommendation data or error
  */
-export async function simulateReview(
-  formData: SimulateReviewRequest,
-): Promise<SimulateReviewResponse> {
+export async function recommend(
+  formData: RecommendationRequest,
+): Promise<RecommendationResponse> {
   try {
-    // Validation: Check required fields
-    if (!formData.product_name?.trim()) {
-      return {
-        success: false,
-        error: "Product name is required",
-      };
-    }
-
-    if (!formData.product_category) {
-      return {
-        success: false,
-        error: "Product category is required",
-      };
-    }
-
-    if (!formData.product_description?.trim()) {
-      return {
-        success: false,
-        error: "Product description is required",
-      };
-    }
-
     // Validation: At least one of user_id or user_persona must be provided
     if (!formData.user_id?.trim() && !formData.user_persona?.trim()) {
       return {
@@ -45,41 +23,30 @@ export async function simulateReview(
       };
     }
 
-    // Validation: business_name is required for food/business categories
-    if (
-      (formData.product_category === "food" ||
-        formData.product_category === "business") &&
-      !formData.business_name?.trim()
-    ) {
-      return {
-        success: false,
-        error: "Business name is required for food and business products",
-      };
+    // Prepare the payload
+    const payload: Record<string, string> = {};
+
+    if (formData.user_id?.trim()) {
+      payload.user_id = formData.user_id.trim();
     }
 
-    // Prepare the payload
-    const payload = {
-      user_id: formData.user_id || undefined,
-      user_persona: formData.user_persona || undefined,
-      product_name: formData.product_name.trim(),
-      product_category: formData.product_category,
-      product_description: formData.product_description.trim(),
-      business_name: formData.business_name?.trim() || undefined,
-      language: formData.language || undefined,
-    };
+    if (formData.user_persona?.trim()) {
+      payload.user_persona = formData.user_persona.trim();
+    }
 
-    // Remove undefined fields
-    Object.keys(payload).forEach(
-      (key) =>
-        payload[key as keyof typeof payload] === undefined &&
-        delete payload[key as keyof typeof payload],
-    );
+    if (formData.category) {
+      payload.category = formData.category;
+    }
+
+    if (formData.language) {
+      payload.language = formData.language;
+    }
 
     // Make the API call with timeout
-    const API_URL = "https://naija-soul.onrender.com/simulate-review";
-    const TIMEOUT_MS = 3000000; // 30 second timeout
+    const API_URL = "https://naija-soul.onrender.com/recommend";
+    const TIMEOUT_MS = 30000000; // 3000 second timeout
 
-    console.log("🚀 Calling API with payload:", payload);
+    console.log("🚀 Calling recommendations API with payload:", payload);
 
     let response;
     try {
@@ -111,7 +78,7 @@ export async function simulateReview(
           return {
             success: false,
             error:
-              "Request timeout (30s). The Render backend may be sleeping (free tier) or offline. Try again in a moment.",
+              "Request timeout (30s). The backend may be sleeping or offline. Try again in a moment.",
           };
         }
 
@@ -119,15 +86,14 @@ export async function simulateReview(
           return {
             success: false,
             error:
-              "Connection failed. The backend service may be down or in sleep mode. Visit render.com to check the service status.",
+              "Connection failed. The backend service may be down or in sleep mode.",
           };
         }
 
         if (errorMsg.includes("econnrefused")) {
           return {
             success: false,
-            error:
-              "Connection refused. The backend service is not responding. It may be restarting.",
+            error: "Connection refused. The backend service is not responding.",
           };
         }
 
@@ -135,7 +101,7 @@ export async function simulateReview(
           return {
             success: false,
             error:
-              "Connection timeout. The backend is not responding quickly enough. Try again soon.",
+              "Connection timeout. The backend is not responding quickly enough.",
           };
         }
 
@@ -192,7 +158,7 @@ export async function simulateReview(
     // Parse successful response
     try {
       const data = await response.json();
-      console.log("✅ Successfully generated review:", data);
+      console.log("✅ Successfully got recommendations:", data);
       return {
         success: true,
         data,
@@ -219,7 +185,7 @@ export async function simulateReview(
       console.error("❌ Unexpected error:", error);
       return {
         success: false,
-        error: `Failed to generate review: ${error.message}`,
+        error: `Failed to get recommendations: ${error.message}`,
       };
     }
 

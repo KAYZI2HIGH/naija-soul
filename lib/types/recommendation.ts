@@ -2,6 +2,7 @@ export interface RecommendationRequest {
   user_id?: string;
   user_persona?: string;
   category?: "food" | "book" | "movie" | "business";
+  language?: "english" | "pidgin" | "yoruba" | "igbo" | "hausa" | null;
 }
 
 export interface Recommendation {

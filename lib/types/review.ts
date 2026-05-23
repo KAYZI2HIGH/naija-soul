@@ -5,6 +5,7 @@ export interface SimulateReviewRequest {
   product_category: "food" | "book" | "movie" | "business";
   product_description: string;
   business_name?: string;
+  language?: "english" | "pidgin" | "yoruba" | "igbo" | "hausa" | null;
 }
 
 export interface SimulateReviewResponseData {
