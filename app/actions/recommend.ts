@@ -23,49 +23,39 @@ export async function recommend(
       };
     }
 
-    // Prepare the payload
-    const payload: Record<string, string> = {};
+    // Prepare the payload - using same pattern as simulate-review
+    const payload = {
+      user_id: formData.user_id?.trim() || undefined,
+      user_persona: formData.user_persona?.trim() || undefined,
+      category: formData.category || undefined,
+      language: formData.language || undefined,
+    };
 
-    if (formData.user_id?.trim()) {
-      payload.user_id = formData.user_id.trim();
-    }
+    // Remove undefined fields
+    Object.keys(payload).forEach(
+      (key) =>
+        payload[key as keyof typeof payload] === undefined &&
+        delete payload[key as keyof typeof payload],
+    );
 
-    if (formData.user_persona?.trim()) {
-      payload.user_persona = formData.user_persona.trim();
-    }
-
-    if (formData.category) {
-      payload.category = formData.category;
-    }
-
-    if (formData.language) {
-      payload.language = formData.language;
-    }
-
-    // Make the API call with timeout
+    // Make the API call
     const API_URL = "https://naija-soul.onrender.com/recommend";
-    const TIMEOUT_MS = 30000000; // 3000 second timeout
 
-    console.log("🚀 Calling recommendations API with payload:", payload);
+    console.log(
+      "🚀 Calling recommendations API with payload:",
+      JSON.stringify(payload, null, 2),
+    );
 
     let response;
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        console.warn("⏱️ Request timeout after", TIMEOUT_MS, "ms");
-        controller.abort();
-      }, TIMEOUT_MS);
-
       response = await fetch(API_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
-        signal: controller.signal,
       });
 
-      clearTimeout(timeoutId);
       console.log("✅ API response received, status:", response.status);
     } catch (fetchError) {
       console.error("❌ Fetch error:", fetchError);
@@ -74,14 +64,6 @@ export async function recommend(
         const errorMsg = fetchError.message.toLowerCase();
 
         // Better error messaging based on error type
-        if (fetchError.name === "AbortError") {
-          return {
-            success: false,
-            error:
-              "Request timeout (30s). The backend may be sleeping or offline. Try again in a moment.",
-          };
-        }
-
         if (errorMsg.includes("connect")) {
           return {
             success: false,

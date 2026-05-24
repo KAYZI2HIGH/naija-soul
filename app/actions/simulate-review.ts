@@ -75,30 +75,21 @@ export async function simulateReview(
         delete payload[key as keyof typeof payload],
     );
 
-    // Make the API call with timeout
+    // Make the API call
     const API_URL = "https://naija-soul.onrender.com/simulate-review";
-    const TIMEOUT_MS = 3000000; // 30 second timeout
 
     console.log("🚀 Calling API with payload:", payload);
 
     let response;
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        console.warn("⏱️ Request timeout after", TIMEOUT_MS, "ms");
-        controller.abort();
-      }, TIMEOUT_MS);
-
       response = await fetch(API_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
-        signal: controller.signal,
       });
 
-      clearTimeout(timeoutId);
       console.log("✅ API response received, status:", response.status);
     } catch (fetchError) {
       console.error("❌ Fetch error:", fetchError);
@@ -107,14 +98,6 @@ export async function simulateReview(
         const errorMsg = fetchError.message.toLowerCase();
 
         // Better error messaging based on error type
-        if (fetchError.name === "AbortError") {
-          return {
-            success: false,
-            error:
-              "Request timeout (30s). The Render backend may be sleeping (free tier) or offline. Try again in a moment.",
-          };
-        }
-
         if (errorMsg.includes("connect")) {
           return {
             success: false,
@@ -205,15 +188,6 @@ export async function simulateReview(
       };
     }
   } catch (error) {
-    // Handle timeout
-    if (error instanceof Error && error.name === "AbortError") {
-      console.error("⏱️ Request timeout");
-      return {
-        success: false,
-        error: "Request took too long. Please try again.",
-      };
-    }
-
     // Handle other errors
     if (error instanceof Error) {
       console.error("❌ Unexpected error:", error);

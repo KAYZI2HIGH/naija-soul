@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Copy, X, Star, MapPin } from "lucide-react";
+import { Copy, X, Star, MapPin, BadgeRussianRuble } from "lucide-react";
 import { useState } from "react";
 import type { SimulateReviewResponse } from "@/lib/types/review";
 import type { RecommendationResponse } from "@/lib/types/recommendation";
@@ -112,7 +112,7 @@ export function ReviewDialog({
       open={open}
       onOpenChange={onOpenChange}
     >
-      <DialogContent className="max-w-2xl bg-white dark:bg-white/5 max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl! bg-white dark:bg-white/5 max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-2xl">Results</DialogTitle>
           <DialogDescription>
@@ -136,13 +136,13 @@ export function ReviewDialog({
                 value="review"
                 disabled={!reviewSuccess}
               >
-                📝 Review
+                 Review
               </TabsTrigger>
               <TabsTrigger
                 value="recommendation"
                 disabled={!recommendationSuccess}
               >
-                💡 Recommendations
+                Recommendations
               </TabsTrigger>
             </TabsList>
 
@@ -229,7 +229,7 @@ export function ReviewDialog({
               className="space-y-4 py-4"
             >
               {recommendationSuccess && response.recommendation?.data ?
-                <div className="space-y-4 p-4 bg-linear-to-r from-blue-50 to-transparent dark:from-blue-950/20 dark:to-transparent border border-blue-200 dark:border-blue-900 rounded-lg">
+                <div className="space-y-4 p-4 bg-gradient-to-r from-blue-50 to-transparent dark:from-blue-950/20 dark:to-transparent border border-blue-200 dark:border-blue-900 rounded-lg">
                   <div>
                     <h3 className="font-semibold text-black dark:text-white mb-3">
                       Personalized Recommendations

@@ -224,6 +224,10 @@ export function AI_Prompt() {
   const handleSubmit = () => {
     if (!validateForm()) return;
 
+    // Reset dialog responses for new submission
+    setDialogResponse({ review: null, recommendation: null });
+    setIsDialogOpen(true);
+
     const reviewPayload = {
       product_name: formState.product_name.trim(),
       product_category: formState.product_category,
@@ -247,6 +251,9 @@ export function AI_Prompt() {
       language,
     };
 
+    // Open dialog to show loading state
+    setIsDialogOpen(true);
+
     // Make both API calls simultaneously
     submitReview(reviewPayload, {
       onSuccess: (reviewResponse) => {
@@ -265,11 +272,6 @@ export function AI_Prompt() {
         }));
       },
     });
-
-    // Open dialog after a short delay to allow both requests to start
-    setTimeout(() => {
-      setIsDialogOpen(true);
-    }, 100);
   };
 
   const resetForm = () => {
